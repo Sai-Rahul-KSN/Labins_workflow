@@ -1,123 +1,259 @@
-import os
+# main.py
+import pandas as pd
+from typing import List, Dict, Any
+import validators as V
+import config
+from utils import make_excel_row_number, safe_strip
 import argparse
-import subprocess
-import logging
-from pathlib import Path
+import os
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
-def run_command(command, cwd=None):
-    """Run a shell command and handle errors."""
-    try:
-        result = subprocess.run(command, cwd=cwd, check=True, capture_output=True, text=True)
-        logger.info(f"Command succeeded: {' '.join(command)}")
-        logger.debug(f"Output: {result.stdout}")
-        return result.stdout
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Command failed: {' '.join(command)}\nError: {e.stderr}")
-        raise
-
-def pipeline(pdf_folder: str, images_folder: str, output_excel: str, temp_excel: str, duration: int, interval: int, dpi: int):
+def validate_row(row: pd.Series, row_idx: int) -> List[Dict[str, Any]]:
     """
-    Run the full PDF extraction pipeline:
-    1. Extract images/screenshots from PDFs.
-    2. Extract form data and save to temporary Excel.
-    3. Embed images into the Excel to produce final output.
+    Validate a single DataFrame row.
+    Returns list of error dicts for that row (empty list if valid).
+    Each error dict contains: row_idx, excel_row, column, value, expected, error_type
     """
-    pdf_folder = Path(pdf_folder).resolve()
-    images_folder = Path(images_folder).resolve()
-    output_excel = Path(output_excel).resolve()
-    temp_excel = Path(temp_excel).resolve()
+    errors = []
+    excel_row = make_excel_row_number(row_idx)
 
-    # Ensure directories exist
-    images_folder.mkdir(parents=True, exist_ok=True)
+    def add_error(col, val, expected, err_type):
+        errors.append({
+            "row_index": row_idx,
+            "excel_row": excel_row,
+            "column": col,
+            "invalid_value": val,
+            "expected": expected,
+            "error_type": err_type
+        })
 
-    # Step 1: Extract images and screenshots using extract_images4.0.py
-    logger.info("Step 1: Extracting images and screenshots from PDFs...")
-    extract_script = Path(__file__).parent / "extract_images4.0.py"
-    if not extract_script.exists():
-        raise FileNotFoundError(f"extract_images4.0.py not found at {extract_script}")
-    
-    run_command([
-        "python", str(extract_script),
-        "--input", str(pdf_folder),
-        "--outdir", str(images_folder),
-        "--rasterize", "auto",
-        "--dpi", str(dpi),
-        "--fields", "Survey Image",
-        "--include-page-images"
-    ])
+    # Example expected column names. Adjust to actual column names in your Excel.
+    # We'll use typical names. If column missing, report as missing for entire row.
+    # The script tolerates missing columns by reporting an error row-level.
 
-    # Step 2: Extract form data using pdfextract4.0.py (which runs pdf_form_extractor3.0.py)
-    logger.info("Step 2: Extracting form data to temporary Excel...")
-    pdfextract_script = Path(__file__).parent / "pdfextract4.0.py"
-    if not pdfextract_script.exists():
-        raise FileNotFoundError(f"pdfextract4.0.py not found at {pdfextract_script}")
-    
-    # Temporarily override the EXCEL_OUTPUT in pdfextract4.0.py via environment or args if possible
-    # Note: Since pdfextract4.0.py has hardcoded EXCEL_OUTPUT, we assume it's modified or use env vars if added.
-    # For simplicity, run it and then rename the output to temp_excel.
-    run_command([
-        "python", str(pdfextract_script),
-        "--duration", str(duration),
-        "--interval", str(interval)
-    ])
-    default_temp = Path(r"C:\Users\sk23dg\Desktop\Content_extraction\output.xlsx")
-    if default_temp.exists():
-        default_temp.rename(temp_excel)
-        logger.info(f"Renamed default output to {temp_excel}")
-    else:
-        raise FileNotFoundError("Temporary Excel from pdfextract4.0.py not found.")
+    # Helper to pull column safely
+    def g(c):
+        return row.get(c, None)
 
-    # Step 3: Embed images into Excel using excel_image_embedder5.0.py
-    logger.info("Step 3: Embedding images into Excel...")
-    embedder_script = Path(__file__).parent / "excel_image_embedder5.0.py"
-    if not embedder_script.exists():
-        raise FileNotFoundError(f"excel_image_embedder5.0.py not found at {embedder_script}")
-    
-    run_command([
-        "python", str(embedder_script),
-        "--excel", str(temp_excel),
-        "--images", str(images_folder),
-        "--output", str(output_excel),
-        "--header", "Screenshot"
-    ])
+    # 1. Corner of Section
+    col = "Corner of Section"
+    val = g(col)
+    ok, cleaned, err = V.validate_categorical(val, config.CORNER_OF_SECTION, case_insensitive=True)
+    if not ok:
+        add_error(col, val, f"one of {config.CORNER_OF_SECTION}", err or "invalid")
 
-    logger.info(f"Pipeline completed successfully. Final output: {output_excel}")
+    # 2. Sections
+    col = "Section"
+    val = g(col)
+    ok, cleaned, err = V.validate_integer_range(val, config.SECTION_MIN, config.SECTION_MAX)
+    if not ok:
+        add_error(col, val, f"integer [{config.SECTION_MIN}-{config.SECTION_MAX}]", err or "invalid")
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="PDF Extraction Pipeline: Extract data, images, screenshots, and embed in Excel.")
-    parser.add_argument("--pdf_folder", default=r"C:\Users\sk23dg\Desktop\Labins_Workflow\PDF_Extractor\test_pdfs",
-                        help="Folder containing PDF files")
-    parser.add_argument("--images_folder", default=r"C:\Users\sk23dg\Desktop\Labins_Workflow\PDF_Extractor\test_pdfs\extracted_images",
-                        help="Folder to store extracted images/screenshots")
-    parser.add_argument("--output_excel", default="final_excel_with_data_and_images.xlsx",
-                        help="Path for final Excel output")
-    parser.add_argument("--temp_excel", default="temp_data_output.xlsx",
-                        help="Path for temporary Excel from data extraction")
-    parser.add_argument("--duration", type=int, default=60,
-                        help="Duration for recurring data extraction in seconds")
-    parser.add_argument("--interval", type=int, default=6,
-                        help="Interval for recurring data extraction in seconds")
-    parser.add_argument("--dpi", type=int, default=300,
-                        help="DPI for image extraction and rasterization")
+    # 3. Township
+    col = "Township"
+    val = g(col)
+    ok, cleaned, err = V.validate_integer_range(val, config.TOWNSHIP_MIN, config.TOWNSHIP_MAX)
+    if not ok:
+        add_error(col, val, f"integer [{config.TOWNSHIP_MIN}-{config.TOWNSHIP_MAX}]", err or "invalid")
+
+    # 4. Township Direction
+    col = "Township Direction"
+    val = g(col)
+    ok, cleaned, err = V.validate_categorical(val, config.TOWNSHIP_DIR, case_insensitive=True)
+    if not ok:
+        add_error(col, val, f"one of {config.TOWNSHIP_DIR}", err or "invalid")
+
+    # 5. Range
+    col = "Range"
+    val = g(col)
+    ok, cleaned, err = V.validate_integer_range(val, config.RANGE_MIN, config.RANGE_MAX)
+    if not ok:
+        add_error(col, val, f"integer [{config.RANGE_MIN}-{config.RANGE_MAX}]", err or "invalid")
+
+    # 6. Range Direction
+    col = "Range Direction"
+    val = g(col)
+    ok, cleaned, err = V.validate_categorical(val, config.RANGE_DIR, case_insensitive=True)
+    if not ok:
+        add_error(col, val, f"one of {config.RANGE_DIR}", err or "invalid")
+
+    # 7. County
+    col = "County"
+    val = g(col)
+    ok, cleaned, err = V.validate_county(val)
+    if not ok:
+        add_error(col, val, "Florida county name", err or "invalid")
+
+    # 8. Latitude
+    col = "Latitude"
+    val = g(col)
+    ok, cleaned, err = V.validate_lat_lon(val, config.LAT_MIN, config.LAT_MAX)
+    if not ok:
+        add_error(col, val, f"float [{config.LAT_MIN}-{config.LAT_MAX}]", err or "invalid")
+
+    # 9. Longitude
+    col = "Longitude"
+    val = g(col)
+    ok, cleaned, err = V.validate_lat_lon(val, config.LON_MIN, config.LON_MAX)
+    if not ok:
+        add_error(col, val, f"float [{config.LON_MIN}-{config.LON_MAX}]", err or "invalid")
+
+    # 10. Easting (optional)
+    col = "Easting"
+    val = g(col)
+    ok, cleaned, err = V.validate_optional_coordinate(val, config.EASTING_MIN, config.EASTING_MAX)
+    if not ok:
+        add_error(col, val, f"float (optional) [{config.EASTING_MIN}-{config.EASTING_MAX}]", err or "invalid")
+
+    # 11. Northing (optional)
+    col = "Northing"
+    val = g(col)
+    ok, cleaned, err = V.validate_optional_coordinate(val, config.NORTHING_MIN, config.NORTHING_MAX)
+    if not ok:
+        add_error(col, val, f"float (optional) [{config.NORTHING_MIN}-{config.NORTHING_MAX}]", err or "invalid")
+
+    # 12. Zone
+    col = "Zone"
+    val = g(col)
+    ok, cleaned, err = V.validate_zone(val)
+    if not ok:
+        add_error(col, val, f"one of {config.ZONE_VALUES}", err or "invalid")
+
+    # 13. Horizontal Datum
+    col = "Horizontal Datum"
+    val = g(col)
+    ok, cleaned, err = V.validate_horizontal_datum(val)
+    if not ok:
+        add_error(col, val, f"one of {config.HORIZONTAL_DATUM}", err or "invalid")
+
+    # 14. Source
+    col = "Source"
+    val = g(col)
+    ok, cleaned, err = V.validate_string_field(val)
+    if not ok:
+        add_error(col, val, f"non-empty string up to {config.STRING_MAX_LEN} chars", err or "invalid")
+
+    # 15. Determined By
+    col = "Determined By"
+    val = g(col)
+    ok, cleaned, err = V.validate_string_field(val)
+    if not ok:
+        add_error(col, val, f"non-empty string up to {config.STRING_MAX_LEN} chars", err or "invalid")
+
+    # 16. Certified Date (Month, Day, Year)
+    col_m, col_d, col_y = "Certified Month", "Certified Day", "Certified Year"
+    ok, dt, err = V.validate_date_components(g(col_m), g(col_d), g(col_y))
+    if not ok:
+        add_error("Certified Date", f"{g(col_m)}-{g(col_d)}-{g(col_y)}", "valid date", err or "invalid")
+
+    # 17. File Date (Month, Day, Year)
+    col_m, col_d, col_y = "File Month", "File Day", "File Year"
+    ok, dt, err = V.validate_date_components(g(col_m), g(col_d), g(col_y))
+    if not ok:
+        add_error("File Date", f"{g(col_m)}-{g(col_d)}-{g(col_y)}", "valid date", err or "invalid")
+
+    # 18. Surveyor Information: we will validate a few common subfields if present (Surveyor Name, Company)
+    col = "Surveyor Name"
+    val = g(col)
+    if val is not None:
+        ok, cleaned, err = V.validate_string_field(val, required=False)
+        if not ok:
+            add_error(col, val, "string", err or "invalid")
+
+    col = "Surveyor Company"
+    val = g(col)
+    if val is not None:
+        ok, cleaned, err = V.validate_string_field(val, required=False)
+        if not ok:
+            add_error(col, val, "string", err or "invalid")
+
+    return errors
+
+
+def validate_dataframe(df: pd.DataFrame) -> Dict[str, Any]:
+    all_errors = []
+    valid_rows_indices = []
+    invalid_rows_indices = []
+
+    for i, row in df.iterrows():
+        errs = validate_row(row, i)
+        if errs:
+            all_errors.extend(errs)
+            invalid_rows_indices.append(i)
+        else:
+            valid_rows_indices.append(i)
+
+    # Build DataFrames for output
+    report_df = pd.DataFrame(all_errors)
+    return {
+        "report_df": report_df,
+        "valid_idx": valid_rows_indices,
+        "invalid_idx": invalid_rows_indices
+    }
+
+
+def write_results(original_df: pd.DataFrame, results: Dict[str, Any], out_path: str):
+    report_df = results["report_df"]
+    valid_idx = results["valid_idx"]
+    invalid_idx = results["invalid_idx"]
+
+    # Summary
+    total_rows = len(original_df)
+    total_valid = len(valid_idx)
+    total_invalid = len(invalid_idx)
+    error_count_by_column = report_df['column'].value_counts().to_dict() if not report_df.empty else {}
+
+    summary = {
+        "total_rows": total_rows,
+        "valid_rows": total_valid,
+        "invalid_rows": total_invalid,
+        "errors_by_column": error_count_by_column
+    }
+
+    # Flagged original
+    flagged = original_df.copy()
+    flagged["has_errors"] = False
+    flagged["validation_errors"] = ""
+    if not report_df.empty:
+        grouped = report_df.groupby("row_index")['error_type'].apply(lambda errs: "; ".join(errs)).to_dict()
+        for idx, err_str in grouped.items():
+            if idx in flagged.index:
+                flagged.at[idx, "has_errors"] = True
+                flagged.at[idx, "validation_errors"] = err_str
+
+    # Valid and invalid slices
+    valid_rows = original_df.loc[valid_idx].copy() if valid_idx else original_df.iloc[0:0].copy()
+    invalid_rows = original_df.loc[invalid_idx].copy() if invalid_idx else original_df.iloc[0:0].copy()
+
+    # Write to Excel with multiple sheets
+    with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
+        summary_df = pd.DataFrame([summary])
+        summary_df.to_excel(writer, sheet_name="summary", index=False)
+        report_df.to_excel(writer, sheet_name="validation_report", index=False)
+        valid_rows.to_excel(writer, sheet_name="valid_rows", index=False)
+        invalid_rows.to_excel(writer, sheet_name="invalid_rows", index=False)
+        flagged.to_excel(writer, sheet_name="flagged_original", index=False)
+
+    print(f"Wrote results to {out_path}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Validate CCR form Excel file.")
+    parser.add_argument("input_excel", help="Path to input Excel file")
+    parser.add_argument("--sheet", default=None, help="Sheet name (default: first sheet)")
+    parser.add_argument("--output", default="validation_results.xlsx", help="Path to output Excel report")
     args = parser.parse_args()
 
-    try:
-        pipeline(
-            args.pdf_folder,
-            args.images_folder,
-            args.output_excel,
-            args.temp_excel,
-            args.duration,
-            args.interval,
-            args.dpi
-        )
-    except Exception as e:
-        logger.error(f"Pipeline failed: {str(e)}")
-        raise
+    if not os.path.exists(args.input_excel):
+        raise FileNotFoundError(f"Input file not found: {args.input_excel}")
+
+    df = pd.read_excel(args.input_excel, sheet_name=args.sheet, engine="openpyxl", dtype=object)
+    # Trim whitespace in all string columns
+    df = df.applymap(lambda v: safe_strip(v) if isinstance(v, str) else v)
+
+    results = validate_dataframe(df)
+    write_results(df, results, args.output)
+
+
+if __name__ == "__main__":
+    main()
