@@ -1,0 +1,96 @@
+# BLMID Validator Configuration File
+# Copy this file and customize for your setup
+
+database:
+  # PostgreSQL connection URI format:
+  # postgresql://[user[:password]@][netloc][:port][/dbname][?param1=value1&...]
+  # Examples:
+  #   postgresql://user:password@localhost:5432/blmid_db
+  #   postgresql://myuser@192.168.1.100:5432/survey_data
+  connection_uri: "postgresql://user:password@localhost:5432/database_name"
+  
+  # Database table name containing BLMID reference data
+  table_name: "blmid_reference"
+  
+  # Column names in the database table
+  columns:
+    blmid: "blmid"
+    latitude: "latitude"
+    longitude: "longitude"
+
+excel:
+  # Sheet name to read from Excel file
+  # Set to null to use the first sheet (default)
+  sheet_name: null
+  
+  # Column letters for BLMID, Latitude, Longitude
+  # Excel columns: A=BLMID, B=Latitude, C=Longitude
+  columns:
+    blmid: "A"
+    latitude: "B"
+    longitude: "C"
+  
+  # Row number where headers are located (1-indexed)
+  header_row: 1
+
+pdf:
+  # Enable OCR for scanned PDFs
+  ocr_enabled: true
+  
+  # Use OCR only if text extraction fails (recommended for mixed PDFs)
+  ocr_fallback: true
+  
+  # Path to tesseract executable (leave blank to auto-detect)
+  # Windows example: "C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
+  # Linux/Mac example: "/usr/bin/tesseract"
+  tesseract_path: null
+  
+  # Regex patterns to extract BLMID and coordinates
+  # Customize these based on your PDF format
+  regex_patterns:
+    # BLMID pattern - matches "BLMID: ABC123" or "BLM-ABC123"
+    blmid: "BLM[\\s-]*(?:ID)?[\\s-]*([A-Z0-9]+)"
+    
+    # Latitude pattern - matches "Latitude: 40.7128" or "lat: 40.7128"
+    latitude: "(lat[a-z]*|latitude)[\\s:]*(-?\\d+\\.?\\d*)"
+    
+    # Longitude pattern - matches "Longitude: -74.0060" or "lon: -74.0060"
+    longitude: "(lon[a-z]*|longitude)[\\s:]*(-?\\d+\\.?\\d*)"
+
+validation:
+  # Tolerance for coordinate matching in degrees
+  # 0.0001 degrees ≈ 11.1 meters at equator
+  # Adjust based on your precision requirements
+  coordinate_tolerance: 0.0001
+  
+  # Valid coordinate ranges
+  latitude_min: -90
+  latitude_max: 90
+  longitude_min: -180
+  longitude_max: 180
+  
+  # Check for duplicate BLMIDs in single PDF
+  check_duplicates: true
+
+output:
+  # Output directory for generated reports
+  directory: "./output"
+  
+  # Filename prefix for updated Excel file
+  updated_excel_prefix: "Updated_BLMID"
+  
+  # Filename prefix for corrections log
+  corrections_log_prefix: "Corrections_Log"
+
+logging:
+  # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: "INFO"
+  
+  # Log file directory
+  log_dir: "./output/logs"
+  
+  # Error log filename
+  error_log: "error.log"
+  
+  # Process/info log filename
+  process_log: "process.log"

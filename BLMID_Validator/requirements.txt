@@ -1,0 +1,31 @@
+# Python dependencies for BLMID Validator
+
+# Core dependencies
+pandas>=1.3.0           # Data manipulation and Excel handling
+openpyxl>=3.6.0        # Excel file I/O (required by pandas for xlsx)
+PyYAML>=5.4.0          # YAML configuration file support
+
+# PDF processing
+pdfplumber>=0.7.0      # Extract text and tables from PDFs
+PyPDF2>=2.0.0          # Alternative PDF text extraction
+Pillow>=8.3.0          # Image processing for OCR
+
+# Database
+psycopg2-binary>=2.9.0  # PostgreSQL adapter for Python
+
+# OCR support (optional but recommended)
+pytesseract>=0.3.10    # Python wrapper for Tesseract OCR
+# Note: tesseract-ocr binary must be installed separately:
+#   Windows: https://github.com/UB-Mannheim/tesseract/wiki
+#   Ubuntu/Debian: sudo apt-get install tesseract-ocr
+#   macOS: brew install tesseract
+
+# Optional: PDF to image conversion (for OCR)
+PyMuPDF>=1.18.0        # Alternative to pdf2image, better performance
+
+# Development/testing
+pytest>=6.2.0          # Unit testing framework
+pytest-cov>=2.12.0     # Coverage reporting
+black>=21.0             # Code formatting
+flake8>=3.9.0          # Code linting
+mypy>=0.910            # Static type checking

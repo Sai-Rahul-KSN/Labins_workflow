@@ -1,0 +1,37 @@
+SURVEY FORM - BLMID VALIDATION TEST
+
+Date: 2025-11-24
+Form ID: SURVEY-001
+
+================================================================================
+LOCATION INFORMATION
+================================================================================
+
+BLMID: BLM12345
+Field Name: Survey Test Location
+
+Latitude: 40.7128
+Longitude: -74.0060
+
+Elevation: 10 meters
+Terrain Type: Urban
+
+================================================================================
+SURVEY DETAILS
+================================================================================
+
+Surveyor: John Doe
+Organization: Survey Services Inc.
+Contact: (555) 123-4567
+
+GPS Accuracy: ±5 meters
+Collection Method: GPS Device
+
+Notes:
+- Sample survey form for testing BLMID extraction
+- Coordinates based on New York City area
+- Test data for validation system
+
+================================================================================
+END OF FORM
+================================================================================
